@@ -253,7 +253,7 @@ function safe_base64() {
 }
 
 function generate_secret_key() {
-  SB_API_PREFIX= "Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpwaUp1SnJyOVE4MEl6T3NobGdaSjZk" #"$(head -c 16 /dev/urandom | safe_base64)"
+  SB_API_PREFIX="Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpwaUp1SnJyOVE4MEl6T3NobGdaSjZk" #"$(head -c 16 /dev/urandom | safe_base64)"
   readonly SB_API_PREFIX
 }
 
