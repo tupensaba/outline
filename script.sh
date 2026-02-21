@@ -160,7 +160,7 @@ function fetch() {
 function install_docker() {
   (
     # Change umask so that /usr/share/keyrings/docker-archive-keyring.gpg has the right permissions.
-    # See https://github.com/Jigsaw-Code/outline-server/issues/951.
+    # See https://github.com/OutlineFoundation/outline-server/issues/951.
     # We do this in a subprocess so the umask for the calling process is unaffected.
     umask 0022
     fetch https://get.docker.com/ | sh
@@ -172,7 +172,11 @@ function start_docker() {
 }
 
 function docker_container_exists() {
-  docker ps -a --format '{{.Names}}' | grep --quiet "^$1$"
+  docker ps -a --format '{{.Names}}'| grep --quiet "^$1$"
+}
+
+function remove_shadowbox_container() {
+  remove_docker_container "${CONTAINER_NAME}"
 }
 
 function remove_watchtower_container() {
@@ -249,7 +253,7 @@ function safe_base64() {
 }
 
 function generate_secret_key() {
-  SB_API_PREFIX="$(head -c 16 /dev/urandom | safe_base64)"
+  SB_API_PREFIX= "Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpwaUp1SnJyOVE4MEl6T3NobGdaSjZk" #"$(head -c 16 /dev/urandom | safe_base64)"
   readonly SB_API_PREFIX
 }
 
@@ -290,10 +294,9 @@ function write_config() {
     config+=("\"portForNewAccessKeys\": ${FLAGS_KEYS_PORT}")
   fi
   if [[ -n "${SB_DEFAULT_SERVER_NAME:-}" ]]; then
-    config+=("\"name\": \"$(escape_json_string "${SB_DEFAULT_SERVER_NAME}")\"")   
+    config+=("\"name\": \"$(escape_json_string "${SB_DEFAULT_SERVER_NAME}")\"")
   fi
   config+=("\"hostname\": \"$(escape_json_string "${PUBLIC_HOSTNAME}")\"")
-  config+=("\"metricsEnabled\": ${SB_METRICS_ENABLED:-false}")
   echo "{$(join , "${config[@]}")}" > "${STATE_DIR}/shadowbox_server_config.json"
 }
 
@@ -320,13 +323,14 @@ docker_command=(
 
   # Used by Watchtower to know which containers to monitor.
   --label 'com.centurylinklabs.watchtower.enable=true'
-  
+  --label 'com.centurylinklabs.watchtower.scope=outline'
+
   # Use log rotation. See https://docs.docker.com/config/containers/logging/configure/.
   --log-driver local
 
   # The state that is persisted across restarts.
   -v "${STATE_DIR}:${STATE_DIR}"
-    
+
   # Where the container keeps its persistent state.
   -e "SB_STATE_DIR=${STATE_DIR}"
 
@@ -352,8 +356,13 @@ EOF
   STDERR_OUTPUT="$({ "${START_SCRIPT}" >/dev/null; } 2>&1)" && return
   readonly STDERR_OUTPUT
   log_error "FAILED"
-  log_error "${STDERR_OUTPUT}"
-  return 1
+  if docker_container_exists "${CONTAINER_NAME}"; then
+    handle_docker_container_conflict "${CONTAINER_NAME}" true
+    return
+  else
+    log_error "${STDERR_OUTPUT}"
+    return 1
+  fi
 }
 
 function start_watchtower() {
@@ -362,10 +371,12 @@ function start_watchtower() {
   # testing).  Otherwise refresh every hour.
   local -ir WATCHTOWER_REFRESH_SECONDS="${WATCHTOWER_REFRESH_SECONDS:-3600}"
   local -ar docker_watchtower_flags=(--name watchtower --log-driver local --restart always \
+      --label 'com.centurylinklabs.watchtower.enable=true' \
+      --label 'com.centurylinklabs.watchtower.scope=outline' \
       -v /var/run/docker.sock:/var/run/docker.sock)
   # By itself, local messes up the return code.
   local STDERR_OUTPUT
-  STDERR_OUTPUT="$(docker run -d "${docker_watchtower_flags[@]}" containrrr/watchtower --cleanup --label-enable --tlsverify --interval "${WATCHTOWER_REFRESH_SECONDS}" 2>&1 >/dev/null)" && return
+  STDERR_OUTPUT="$(docker run -d "${docker_watchtower_flags[@]}" containrrr/watchtower --cleanup --label-enable --scope=outline --tlsverify --interval "${WATCHTOWER_REFRESH_SECONDS}" 2>&1 >/dev/null)" && return
   readonly STDERR_OUTPUT
   log_error "FAILED"
   if docker_container_exists watchtower; then
@@ -429,7 +440,7 @@ Make sure to open the following ports on your firewall, router or cloud provider
 function set_hostname() {
   # These are URLs that return the client's apparent IP address.
   # We have more than one to try in case one starts failing
-  # (e.g. https://github.com/Jigsaw-Code/outline-server/issues/776).
+  # (e.g. https://github.com/OutlineFoundation/outline-server/issues/776).
   local -ar urls=(
     'https://icanhazip.com/'
     'https://ipinfo.io/ip'
@@ -547,7 +558,7 @@ function escape_json_string() {
       $'\\') escaped="\\\\";;
       *)
         if [[ "${char}" < $'\x20' ]]; then
-          case "${char}" in 
+          case "${char}" in
             $'\b') escaped="\\b";;
             $'\f') escaped="\\f";;
             $'\n') escaped="\\n";;
