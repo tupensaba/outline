@@ -234,7 +234,7 @@ function get_random_port {
 }
 
 function create_persisted_state_dir() {
-  readonly STATE_DIR="${SHADOWBOX_DIR}/persisted-state"
+  readonly STATE_DIR="${SHADOWBOX_DIR}/persisted-state2"
   mkdir -p "${STATE_DIR}"
   chmod ug+rwx,g+s,o-rwx "${STATE_DIR}"
 }
